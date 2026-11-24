@@ -1,0 +1,11 @@
+warning: decision taken from the text of an error
+  --> $DIR/kept.rs:5:8
+   |
+LL |     if error.to_string().contains("space") {}
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: match on the error's type or variant, or downcast to it
+   = note: `#[warn(error_text_match)]` on by default
+
+warning: 1 warning emitted
+

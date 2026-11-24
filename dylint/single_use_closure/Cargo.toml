@@ -1,0 +1,22 @@
+[package]
+name = "single_use_closure"
+description = "Refuses a closure bound with let and used once"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+clippy_utils.workspace = true
+dylint_linting.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+dylint_testing.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,16 @@
+warning: closure `double` is used once
+  --> $DIR/kept.rs:2:9
+   |
+LL |     let double = |value: u32| value * 2;
+   |         ^^^^^^
+   |
+note: its only use
+  --> $DIR/kept.rs:3:13
+   |
+LL |     let _ = double(1);
+   |             ^^^^^^
+   = help: write the code where it is used, or make it a function
+   = note: `#[warn(single_use_closure)]` on by default
+
+warning: 1 warning emitted
+
