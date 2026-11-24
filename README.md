@@ -109,7 +109,7 @@ From the root of the repository to check:
 
 ```sh
 DYLINT_TOML="$(cat rusty-lints.toml)" cargo dylint \
-  --git https://github.com/bwks/rusty-lints --tag v0.1.0 --pattern 'dylint/*' \
+  --git https://github.com/bwks/rusty-lints --rev v0.1.0 --pattern 'dylint/*' \
   --all -- --workspace --all-targets
 ```
 
@@ -117,13 +117,13 @@ As a mise task a repository can copy:
 
 ```toml
 [tasks."lint:dylint"]
-run = '''DYLINT_TOML="$(cat rusty-lints.toml)" cargo dylint --git https://github.com/bwks/rusty-lints --tag v0.1.0 --pattern 'dylint/*' --all -- --workspace --all-targets'''
+run = '''DYLINT_TOML="$(cat rusty-lints.toml)" cargo dylint --git https://github.com/bwks/rusty-lints --rev v0.1.0 --pattern 'dylint/*' --all -- --workspace --all-targets'''
 ```
 
 Notes:
 
 - `--pattern 'dylint/*'` names the lint packages. `--pattern dylint` finds nothing, because `dylint/` is a virtual workspace with no package of its own. Dylint warns that it found no package in `dylint/.cargo`; the warning is harmless.
-- `--rev <commit>` works in place of `--tag`.
+- `--rev` takes a tag or a commit; `--tag` works too.
 - `--all-targets` matters. Without it the lints never see test code.
 - Lints warn by default. To fail on a hit, set `DYLINT_RUSTFLAGS="-D warnings"`.
 - An environment that sets `RUSTUP_TOOLCHAIN` overrides the pinned nightly, and the lint build fails. Run with `env -u RUSTUP_TOOLCHAIN`.
