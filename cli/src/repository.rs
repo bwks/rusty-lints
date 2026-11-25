@@ -11,9 +11,10 @@ pub fn root(path: &Path) -> Result<PathBuf> {
     Ok(PathBuf::from(output.trim_end_matches(['\n', '\r'])))
 }
 
-/// The Rust files git tracks under `root`, relative to it, with `/` between components.
-pub fn tracked_rust_files(root: &Path) -> Result<Vec<String>> {
-    let output = git(root, &["ls-files", "-z", "--", "*.rs"])?;
+/// The files git tracks under `root` that match one of the git `pathspecs`, relative to `root`,
+/// with `/` between components.
+pub fn tracked_files(root: &Path, pathspecs: &[&str]) -> Result<Vec<String>> {
+    let output = git(root, &[&["ls-files", "-z", "--"], pathspecs].concat())?;
     Ok(output
         .split('\0')
         .filter(|path| !path.is_empty())

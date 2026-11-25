@@ -327,7 +327,7 @@ dependencies = [
 
 [[package]]
 name = "error_text_match"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "clippy_utils",
  "dylint_linting",
@@ -805,7 +805,7 @@ checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 
 [[package]]
 name = "single_use_closure"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "clippy_utils",
  "dylint_linting",

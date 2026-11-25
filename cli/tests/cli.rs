@@ -1,8 +1,8 @@
 //! Runs `rusty-lints` on the fixtures, each copied into a git repository of its own.
 
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
+use std::{env, fs, process};
 
 const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures");
 
@@ -14,7 +14,7 @@ impl Repository {
     /// A new git repository named after `test` that tracks `files`, each copied from the
     /// fixtures to the same path.
     fn new(test: &str, files: &[&str]) -> Self {
-        let root = std::env::temp_dir().join(format!("rusty-lints-{}-{test}", std::process::id()));
+        let root = env::temp_dir().join(format!("rusty-lints-{}-{test}", process::id()));
         if root.exists() {
             fs::remove_dir_all(&root).unwrap();
         }
@@ -32,6 +32,14 @@ impl Repository {
     /// Writes `text` to `rusty-lints.toml` at the root.
     fn config(&self, text: &str) {
         fs::write(self.root.join("rusty-lints.toml"), text).unwrap();
+    }
+
+    /// Writes `text` to `path`, relative to the root, and has git track it.
+    fn track(&self, path: &str, text: &str) {
+        let target = self.root.join(path);
+        fs::create_dir_all(target.parent().unwrap()).unwrap();
+        fs::write(target, text).unwrap();
+        git(&self.root, &["add", path]);
     }
 
     /// Runs `rusty-lints scan` on the repository with `args`.
@@ -168,6 +176,35 @@ fn version_number_finds_numbers_in_comments_and_strings() {
         places(&output),
         expected("version_number.rs", &[1, 3, 6, 7, 8])
     );
+}
+
+#[test]
+fn qualified_call_takes_crate_names_from_every_tracked_manifest() {
+    let repository = Repository::new("qualified", &["qualified_call.rs"]);
+    repository.track(
+        "Cargo.toml",
+        "[workspace.dependencies]\ntime-source = \"1\"\n",
+    );
+    repository.track("crates/a/Cargo.toml", "[dependencies]\nid-gen = \"1\"\n");
+    let output = repository.scan(&["--rule", "qualified_call"]);
+    assert_eq!(
+        places(&output),
+        expected("qualified_call.rs", &[4, 5, 6, 7])
+    );
+}
+
+#[test]
+fn qualified_call_min_segments_and_allow_come_from_the_config() {
+    let repository = Repository::new("qualified-config", &["qualified_call.rs"]);
+    repository.config(
+        r#"
+        [qualified_call]
+        min_segments = 4
+        allow = ["std::sync"]
+        "#,
+    );
+    let output = repository.scan(&["--rule", "qualified_call"]);
+    assert_eq!(places(&output), expected("qualified_call.rs", &[6]));
 }
 
 #[test]

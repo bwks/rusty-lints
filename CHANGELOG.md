@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.2.1] - 2026-11-25
+
+### Added
+- The `scan` rule `qualified_call`: an expression, struct literal or pattern path of three or more segments that starts with a crate, such as `jiff::Timestamp::now()`. Crate names come from the repository's `Cargo.toml` files, plus `std`, `core` and `alloc`. `[qualified_call]` in `rusty-lints.toml` takes `min_segments` and `allow`.
+
 ## [0.2.0] - 2026-11-25
 
 ### Added

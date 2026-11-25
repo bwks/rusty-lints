@@ -19,6 +19,8 @@ use clippy_utils::res::MaybeResPath;
 use clippy_utils::ty::implements_trait;
 use clippy_utils::visitors::for_each_expr;
 use clippy_utils::{find_binding_init, is_in_test, sym};
+#[cfg(test)]
+use dylint_testing::ui::Test;
 use rustc_hir::def::{DefKind, Res};
 use rustc_hir::def_id::DefId;
 use rustc_hir::{BinOpKind, Expr, ExprKind, UnOp};
@@ -143,7 +145,8 @@ impl<'tcx> LateLintPass<'tcx> for ErrorTextMatch {
                     && matches!(operator.node, BinOpKind::Eq | BinOpKind::Ne) =>
             {
                 if self.is_error_text(cx, cx.typeck_results(), left, 0)
-                    || self.is_error_text(cx, cx.typeck_results(), right, 0) {
+                    || self.is_error_text(cx, cx.typeck_results(), right, 0)
+                {
                     report(cx, &self.config, expr, expr.span);
                 }
             }
@@ -166,7 +169,10 @@ impl<'tcx> LateLintPass<'tcx> for ErrorTextMatch {
                 let ExprKind::Tup(sides) = scrutinee.kind else {
                     return;
                 };
-                if sides.iter().any(|side| self.is_error_text(cx, cx.typeck_results(), side, 0)) {
+                if sides
+                    .iter()
+                    .any(|side| self.is_error_text(cx, cx.typeck_results(), side, 0))
+                {
                     report(cx, &self.config, expr, call.span);
                 }
             }
@@ -312,7 +318,7 @@ fn report(cx: &LateContext<'_>, config: &Config, expr: &Expr<'_>, span: Span) {
 #[test]
 fn ui() {
     dylint_testing::ui_test(env!("CARGO_PKG_NAME"), "ui");
-    dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_disabled")
+    Test::src_base(env!("CARGO_PKG_NAME"), "ui_disabled")
         .dylint_toml(
             r"
             [error_text_match]
@@ -320,7 +326,7 @@ fn ui() {
             ",
         )
         .run();
-    dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_excluded")
+    Test::src_base(env!("CARGO_PKG_NAME"), "ui_excluded")
         .dylint_toml(
             r#"
             exclude = ["ui_excluded/excluded.rs"]

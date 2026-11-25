@@ -8,10 +8,13 @@ use std::path::Path;
 
 use anyhow::{Context, Result, bail};
 use serde::Deserialize;
+use toml::{Table, Value};
 
 use crate::rule::{Rule, Tool};
 
 pub const FILE_NAME: &str = "rusty-lints.toml";
+
+const MIN_SEGMENTS: usize = 3;
 
 const CLAP_DERIVES: [&str; 4] = ["Parser", "Subcommand", "Args", "ValueEnum"];
 
@@ -23,6 +26,7 @@ pub struct Config {
     pub use_in_function: RuleConfig,
     pub code_in_mod_rs: RuleConfig,
     pub version_number: VersionNumber,
+    pub qualified_call: QualifiedCall,
     pub error_text_match: RuleConfig,
     pub single_use_closure: RuleConfig,
 }
@@ -48,6 +52,15 @@ pub struct VersionNumber {
     pub enabled: bool,
     pub exclude: Vec<String>,
     pub names: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct QualifiedCall {
+    pub enabled: bool,
+    pub exclude: Vec<String>,
+    pub min_segments: usize,
+    pub allow: Vec<String>,
 }
 
 impl Default for RuleConfig {
@@ -79,6 +92,17 @@ impl Default for VersionNumber {
     }
 }
 
+impl Default for QualifiedCall {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            exclude: Vec::new(),
+            min_segments: MIN_SEGMENTS,
+            allow: Vec::new(),
+        }
+    }
+}
+
 impl Config {
     /// Reads the config at `path`, or the defaults when there is no file there.
     pub fn load(path: &Path) -> Result<Self> {
@@ -92,6 +116,7 @@ impl Config {
             Rule::UseInFunction => self.use_in_function.enabled,
             Rule::CodeInModRs => self.code_in_mod_rs.enabled,
             Rule::VersionNumber => self.version_number.enabled,
+            Rule::QualifiedCall => self.qualified_call.enabled,
             Rule::ErrorTextMatch => self.error_text_match.enabled,
             Rule::SingleUseClosure => self.single_use_closure.enabled,
         }
@@ -104,6 +129,7 @@ impl Config {
             Rule::UseInFunction => &self.use_in_function.exclude,
             Rule::CodeInModRs => &self.code_in_mod_rs.exclude,
             Rule::VersionNumber => &self.version_number.exclude,
+            Rule::QualifiedCall => &self.qualified_call.exclude,
             Rule::ErrorTextMatch => &self.error_text_match.exclude,
             Rule::SingleUseClosure => &self.single_use_closure.exclude,
         };
@@ -126,7 +152,7 @@ fn read(path: &Path) -> Result<String> {
 /// The config at `path` as the Dylint lints read it from `DYLINT_TOML`: the file, with each
 /// Dylint rule switched on when `rules` holds it and off otherwise.
 pub fn dylint_toml(path: &Path, rules: &[Rule]) -> Result<String> {
-    let mut table: toml::Table =
+    let mut table: Table =
         toml::from_str(&read(path)?).with_context(|| format!("parsing {}", path.display()))?;
     for rule in Rule::ALL
         .into_iter()
@@ -134,14 +160,11 @@ pub fn dylint_toml(path: &Path, rules: &[Rule]) -> Result<String> {
     {
         let entry = table
             .entry(rule.name())
-            .or_insert_with(|| toml::Value::Table(toml::Table::new()));
-        let toml::Value::Table(rule_table) = entry else {
+            .or_insert_with(|| Value::Table(Table::new()));
+        let Value::Table(rule_table) = entry else {
             bail!("{}: `{rule}` is not a table", path.display());
         };
-        rule_table.insert(
-            "enabled".to_owned(),
-            toml::Value::Boolean(rules.contains(&rule)),
-        );
+        rule_table.insert("enabled".to_owned(), Value::Boolean(rules.contains(&rule)));
     }
     Ok(toml::to_string(&table)?)
 }
@@ -162,7 +185,7 @@ pub fn matches_prefix(pattern: &str, path: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
+    use std::{env, fs, process};
 
     use super::{Config, dylint_toml, matches_prefix};
     use crate::rule::Rule;
@@ -211,7 +234,7 @@ mod tests {
 
     #[test]
     fn dylint_toml_switches_on_only_the_chosen_dylint_rules() {
-        let path = std::env::temp_dir().join(format!("rusty-lints-{}.toml", std::process::id()));
+        let path = env::temp_dir().join(format!("rusty-lints-{}.toml", process::id()));
         fs::write(
             &path,
             r#"

@@ -292,6 +292,8 @@ mod tests {
     use super::{
         CheckArgs, NIGHTLY, NIGHTLY_COMPONENTS, cargo_check_args, read_diagnostic, relative_path,
     };
+    use toml::{Table, Value as TomlValue};
+
     use crate::json::Value;
     use crate::report::Report;
     use crate::rule::Rule;
@@ -299,14 +301,14 @@ mod tests {
     #[test]
     fn nightly_matches_the_toolchain_the_lints_pin() {
         let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../dylint/rust-toolchain.toml");
-        let toolchain: toml::Table = toml::from_str(&fs::read_to_string(path).unwrap()).unwrap();
+        let toolchain: Table = toml::from_str(&fs::read_to_string(path).unwrap()).unwrap();
         let toolchain = toolchain["toolchain"].as_table().unwrap();
         assert_eq!(toolchain["channel"].as_str(), Some(NIGHTLY));
         let components: Vec<&str> = toolchain["components"]
             .as_array()
             .unwrap()
             .iter()
-            .filter_map(toml::Value::as_str)
+            .filter_map(TomlValue::as_str)
             .collect();
         assert_eq!(components, NIGHTLY_COMPONENTS);
     }

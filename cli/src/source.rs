@@ -1,5 +1,7 @@
 //! A Rust file read for scanning: its text, its syntax tree and its lines.
 
+use std::iter;
+
 use crate::lex::{self, Token};
 
 pub struct Source {
@@ -12,7 +14,7 @@ pub struct Source {
 impl Source {
     /// Lexes `text`, read from `path` relative to the repository root.
     pub fn new(path: String, text: String) -> Self {
-        let line_starts = std::iter::once(0)
+        let line_starts = iter::once(0)
             .chain(text.match_indices('\n').map(|(at, _)| at + 1))
             .collect();
         let tokens = lex::tokens(&text);
@@ -58,6 +60,8 @@ impl Source {
 
 #[cfg(test)]
 mod tests {
+    use syn::Item;
+
     use super::Source;
 
     #[test]
@@ -74,7 +78,7 @@ mod tests {
     fn shebang_keeps_offsets() {
         let source = Source::new("a.rs".into(), "#!/usr/bin/env run\nstruct A;\n".into());
         let file = source.parse().unwrap();
-        let syn::Item::Struct(item) = &file.items[0] else {
+        let Item::Struct(item) = &file.items[0] else {
             panic!("expected a struct");
         };
         assert_eq!(item.ident.span().byte_range(), 26..27);

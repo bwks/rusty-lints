@@ -6,6 +6,8 @@
 //! seconds`). The number may follow "version", a `v`, or one of the configured names, as in
 //! `since Sherpa 0.7.0`. An IP address or a prefix (`10.0.0.0/24`) is not a version.
 
+use std::iter;
+
 use crate::lex::Kind;
 use crate::source::Source;
 
@@ -48,7 +50,7 @@ fn starts_with_version(rest: &str, word: &str, names: &[String]) -> bool {
     let Some(mut rest) = strip_spaces(rest) else {
         return false;
     };
-    for prefix in std::iter::once("version").chain(names.iter().map(String::as_str)) {
+    for prefix in iter::once("version").chain(names.iter().map(String::as_str)) {
         if let Some(after) = rest.strip_prefix(prefix).and_then(strip_spaces) {
             rest = after;
             break;
