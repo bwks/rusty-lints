@@ -163,8 +163,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "rusty-scan"
-version = "0.1.0"
+name = "rusty-lints"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",

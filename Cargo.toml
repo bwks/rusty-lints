@@ -1,0 +1,6 @@
+# The stable workspace: the `rusty-lints` command line tool. The Dylint lints in `dylint/` are a
+# workspace of their own, built with the nightly they pin.
+[workspace]
+members = ["cli"]
+exclude = ["dylint"]
+resolver = "3"
