@@ -3,9 +3,11 @@
 
 mod code_in_mod_rs;
 mod field_comment;
+mod qualified_call;
 mod use_in_function;
 mod version_number;
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 
@@ -21,7 +23,12 @@ use crate::source::Source;
 /// scan checks.
 pub fn run(root: &Path, rules: &[Rule], config: &Config) -> Result<Report> {
     let mut report = Report::default();
-    for path in repository::tracked_rust_files(root)? {
+    let crates = if rules.contains(&Rule::QualifiedCall) {
+        qualified_call::crate_names(root, config)?
+    } else {
+        BTreeSet::new()
+    };
+    for path in repository::tracked_files(root, &["*.rs"])? {
         let full_path = root.join(&path);
         if !full_path.is_file() {
             continue;
@@ -29,7 +36,7 @@ pub fn run(root: &Path, rules: &[Rule], config: &Config) -> Result<Report> {
         let text = fs::read_to_string(&full_path)
             .with_context(|| format!("reading {}", full_path.display()))?;
         let source = Source::new(path, text);
-        let (hits, error) = check(&source, rules, config);
+        let (hits, error) = check(&source, rules, config, &crates);
         report.hits.extend(hits);
         if let Some(error) = error {
             let start = error.span().start();
@@ -42,10 +49,16 @@ pub fn run(root: &Path, rules: &[Rule], config: &Config) -> Result<Report> {
     Ok(report)
 }
 
-/// Checks `source` against each of `rules` that does not exclude its path. Returns the hits, one
-/// per rule and line, and the parse error when a rule needs the syntax tree and the file does not
-/// parse; the rules that read tokens alone still run on such a file.
-fn check(source: &Source, rules: &[Rule], config: &Config) -> (Vec<Hit>, Option<syn::Error>) {
+/// Checks `source` against each of `rules` that does not exclude its path; `crates` are the crate
+/// names of the repository. Returns the hits, one per rule and line, and the parse error when a
+/// rule needs the syntax tree and the file does not parse; the rules that read tokens alone still
+/// run on such a file.
+fn check(
+    source: &Source,
+    rules: &[Rule],
+    config: &Config,
+    crates: &BTreeSet<String>,
+) -> (Vec<Hit>, Option<syn::Error>) {
     let rules: Vec<Rule> = rules
         .iter()
         .copied()
@@ -61,7 +74,7 @@ fn check(source: &Source, rules: &[Rule], config: &Config) -> (Vec<Hit>, Option<
     };
     let mut hits = Vec::new();
     for rule in rules {
-        let mut lines = lines(rule, source, file.as_ref(), config);
+        let mut lines = lines(rule, source, file.as_ref(), config, crates);
         lines.sort_unstable();
         lines.dedup();
         hits.extend(lines.into_iter().map(|line| Hit {
@@ -82,14 +95,23 @@ fn needs_syntax(rule: Rule) -> bool {
 }
 
 /// The 1-based lines of `source` that break `rule`. `file` is the syntax tree, when the file
-/// parsed.
-fn lines(rule: Rule, source: &Source, file: Option<&syn::File>, config: &Config) -> Vec<usize> {
+/// parsed, and `crates` are the crate names of the repository.
+fn lines(
+    rule: Rule,
+    source: &Source,
+    file: Option<&syn::File>,
+    config: &Config,
+    crates: &BTreeSet<String>,
+) -> Vec<usize> {
     match (rule, file) {
         (Rule::FieldComment, Some(file)) => {
             field_comment::lines(source, file, &config.field_comment.exempt_derives)
         }
         (Rule::UseInFunction, Some(file)) => use_in_function::lines(source, file),
         (Rule::CodeInModRs, Some(file)) => code_in_mod_rs::lines(source, file),
+        (Rule::QualifiedCall, Some(file)) => {
+            qualified_call::lines(source, file, crates, &config.qualified_call)
+        }
         (Rule::VersionNumber, _) => version_number::lines(source, &config.version_number.names),
         _ => Vec::new(),
     }

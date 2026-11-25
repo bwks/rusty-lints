@@ -1,6 +1,6 @@
 [package]
 name = "rusty-lints"
-version = "0.2.0"
+version = "0.2.1"
 description = "Rust lints that Clippy does not have: a syntax scan, and Dylint lints that see types"
 edition = "2024"
 license = "MIT"

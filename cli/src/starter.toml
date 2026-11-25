@@ -25,6 +25,14 @@ exclude = []
 # Names that may stand between "since" and the number, as in "since MyApp 1.2.0".
 names = []
 
+[qualified_call]
+enabled = true
+exclude = []
+# A path of this many segments or more that starts with a crate is a hit.
+min_segments = 3
+# Path prefixes that may be written in full, as in "std::sync::atomic::Ordering".
+allow = []
+
 [error_text_match]
 enabled = true
 exclude = []

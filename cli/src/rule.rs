@@ -15,6 +15,8 @@ pub enum Rule {
     CodeInModRs,
     /// No version number after "since", "from", "as of", "before", "after", "until" or "in"
     VersionNumber,
+    /// No long path starting with a crate in an expression, such as `jiff::Timestamp::now()`
+    QualifiedCall,
     /// No decision taken from the text of an error, in tests too
     ErrorTextMatch,
     /// No closure bound with `let` and used once
@@ -28,11 +30,12 @@ pub enum Tool {
 }
 
 impl Rule {
-    pub const ALL: [Rule; 6] = [
+    pub const ALL: [Rule; 7] = [
         Rule::FieldComment,
         Rule::UseInFunction,
         Rule::CodeInModRs,
         Rule::VersionNumber,
+        Rule::QualifiedCall,
         Rule::ErrorTextMatch,
         Rule::SingleUseClosure,
     ];
@@ -45,6 +48,7 @@ impl Rule {
             Rule::UseInFunction => "use_in_function",
             Rule::CodeInModRs => "code_in_mod_rs",
             Rule::VersionNumber => "version_number",
+            Rule::QualifiedCall => "qualified_call",
             Rule::ErrorTextMatch => "error_text_match",
             Rule::SingleUseClosure => "single_use_closure",
         }
@@ -58,9 +62,11 @@ impl Rule {
     /// The command that checks the rule: `scan` reads the syntax, `check` runs the Dylint lints.
     pub fn tool(self) -> Tool {
         match self {
-            Rule::FieldComment | Rule::UseInFunction | Rule::CodeInModRs | Rule::VersionNumber => {
-                Tool::Scan
-            }
+            Rule::FieldComment
+            | Rule::UseInFunction
+            | Rule::CodeInModRs
+            | Rule::VersionNumber
+            | Rule::QualifiedCall => Tool::Scan,
             Rule::ErrorTextMatch | Rule::SingleUseClosure => Tool::Check,
         }
     }
@@ -79,6 +85,9 @@ impl Rule {
             }
             Rule::VersionNumber => {
                 "describe what the code does now; history belongs in the changelog"
+            }
+            Rule::QualifiedCall => {
+                "import the item, or the module or type that holds it, with `use` at the top of the file"
             }
             Rule::ErrorTextMatch => {
                 "match on the error's type or variant, or downcast to it; a test asserts the type or the variant"

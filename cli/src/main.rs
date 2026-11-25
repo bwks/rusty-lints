@@ -58,7 +58,7 @@ struct Cli {
 #[derive(Debug, Subcommand)]
 enum Command {
     /// Check the rules that read syntax alone: `field_comment`, `use_in_function`,
-    /// `code_in_mod_rs` and `version_number`. Every Rust file git tracks is parsed, compiled or not
+    /// `code_in_mod_rs`, `version_number` and `qualified_call`. Every Rust file git tracks is parsed, compiled or not
     Scan,
     /// Check the rules that need types: `error_text_match` and `single_use_closure`. They run in
     /// the compiler through cargo-dylint, on the Cargo workspace at the repository root

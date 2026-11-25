@@ -11,6 +11,8 @@ mod config;
 
 use clippy_utils::diagnostics::span_lint_and_then;
 use clippy_utils::visitors::local_used_once;
+#[cfg(test)]
+use dylint_testing::ui::Test;
 use rustc_hir::{ClosureKind, ExprKind, LetStmt, PatKind};
 use rustc_lint::{LateContext, LateLintPass};
 
@@ -77,7 +79,7 @@ impl<'tcx> LateLintPass<'tcx> for SingleUseClosure {
 #[test]
 fn ui() {
     dylint_testing::ui_test(env!("CARGO_PKG_NAME"), "ui");
-    dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_disabled")
+    Test::src_base(env!("CARGO_PKG_NAME"), "ui_disabled")
         .dylint_toml(
             r"
             [single_use_closure]
@@ -85,7 +87,7 @@ fn ui() {
             ",
         )
         .run();
-    dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_excluded")
+    Test::src_base(env!("CARGO_PKG_NAME"), "ui_excluded")
         .dylint_toml(
             r#"
             exclude = ["ui_excluded/excluded.rs"]

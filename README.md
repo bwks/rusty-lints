@@ -6,34 +6,34 @@ One command line tool, `rusty-lints`, runs two kinds of rule:
 
 | Command | Rules | Toolchain | Sees |
 |---|---|---|---|
-| `rusty-lints scan` | `field_comment`, `use_in_function`, `code_in_mod_rs`, `version_number` | none | Syntax only. Parses every `.rs` file git tracks with `syn`, without compiling the repository, so code that `cfg` leaves out is checked too |
+| `rusty-lints scan` | `field_comment`, `use_in_function`, `code_in_mod_rs`, `version_number`, `qualified_call` | none | Syntax only. Parses every `.rs` file git tracks with `syn`, without compiling the repository, so code that `cfg` leaves out is checked too |
 | `rusty-lints check` | `error_text_match`, `single_use_closure` | pinned nightly | Types and name resolution. Runs inside the compiler through [Dylint](https://github.com/trailofbits/dylint), so it sees only the code compiled for the host with the enabled features |
-| `rusty-lints all` | all six | pinned nightly | `scan`, then `check`, in one report with one exit code |
+| `rusty-lints all` | all seven | pinned nightly | `scan`, then `check`, in one report with one exit code |
 
 `rusty-lints init` writes a starter `rusty-lints.toml`.
 
 ## Install
 
-Download the archive for your platform from the [release](https://github.com/bwks/rusty-lints/releases/tag/v0.2.0), check it against `SHA256SUMS`, and put `rusty-lints` on your `PATH`:
+Download the archive for your platform from the [release](https://github.com/bwks/rusty-lints/releases/tag/v0.2.1), check it against `SHA256SUMS`, and put `rusty-lints` on your `PATH`:
 
 | Platform | Archive |
 |---|---|
-| Linux x86_64 (glibc) | `rusty-lints-v0.2.0-x86_64-unknown-linux-gnu.tar.gz` |
-| Linux x86_64 (static, musl) | `rusty-lints-v0.2.0-x86_64-unknown-linux-musl.tar.gz` |
-| macOS Apple silicon | `rusty-lints-v0.2.0-aarch64-apple-darwin.tar.gz` |
-| macOS Intel | `rusty-lints-v0.2.0-x86_64-apple-darwin.tar.gz` |
-| Windows x86_64 | `rusty-lints-v0.2.0-x86_64-pc-windows-msvc.zip` |
+| Linux x86_64 (glibc) | `rusty-lints-v0.2.1-x86_64-unknown-linux-gnu.tar.gz` |
+| Linux x86_64 (static, musl) | `rusty-lints-v0.2.1-x86_64-unknown-linux-musl.tar.gz` |
+| macOS Apple silicon | `rusty-lints-v0.2.1-aarch64-apple-darwin.tar.gz` |
+| macOS Intel | `rusty-lints-v0.2.1-x86_64-apple-darwin.tar.gz` |
+| Windows x86_64 | `rusty-lints-v0.2.1-x86_64-pc-windows-msvc.zip` |
 
 With [mise](https://mise.jdx.dev), from the same archives:
 
 ```sh
-mise use github:bwks/rusty-lints@0.2.0
+mise use github:bwks/rusty-lints@0.2.1
 ```
 
 From source, with stable Rust:
 
 ```sh
-cargo install --locked --git https://github.com/bwks/rusty-lints --tag v0.2.0 rusty-lints
+cargo install --locked --git https://github.com/bwks/rusty-lints --tag v0.2.1 rusty-lints
 ```
 
 `check` and `all` also need the Dylint tools and the pinned nightly; see [Running `check`](#running-check).
@@ -48,12 +48,21 @@ cargo install --locked --git https://github.com/bwks/rusty-lints --tag v0.2.0 ru
 | `use_in_function` | A `use` declaration inside a function body, a closure or any other block | Imports belong at the top of the file, where a reader looks for them |
 | `code_in_mod_rs` | Any item in a `mod.rs` other than `mod name;` and a `use` with a visibility (a re-export) | A `mod.rs` maps the module tree. Code in it is hard to find among many files with the same name |
 | `version_number` | A version number after "since", "from", "as of", "before", "after", "until" or "in", in a comment or a string literal: `since 0.7.0`, `before v2.1` | Code, comments and user-facing text describe current behaviour. History belongs in the changelog |
+| `qualified_call` | A path of three or more segments that starts with a crate, written in an expression, a struct literal or a pattern: `jiff::Timestamp::now()`, `std::time::Instant::now()`, `serde_json::Value::Null` | Imports belong at the top of the file, not inline. `clippy::absolute_paths` misses these: for `jiff::Timestamp::now()` it counts only the type path `jiff::Timestamp` |
 
 `version_number` details:
 
 - After "since", "before" and "as of", a two-part number (`0.7`) counts. After the other words only a three-part number does, because a two-part number there is more often a quantity (`until 2.5 seconds`).
 - The number may follow "version", a `v`, or one of the names set in `names`, as in `since Sherpa 0.7.0`.
 - An IP address or a prefix (`10.0.0.0/24`) is not a version.
+
+`qualified_call` details:
+
+- A crate is `std`, `core`, `alloc`, or a name from a `Cargo.toml` git tracks: a key of `[dependencies]`, `[dev-dependencies]`, `[build-dependencies]`, their `[target.*]` forms and `[workspace.dependencies]`, or a `[package]` or `[lib]` name, with `-` read as `_`. A `Cargo.toml` under an excluded path is not read.
+- A name the file binds itself with `mod` or `use`, such as a module named like a crate, is not a crate in that file.
+- Not checked: `use` declarations, attributes, types (`clippy::absolute_paths` checks those), a path behind a qualified self type (`<T as Trait>::f`), and paths that start with `crate`, `self`, `super` or `Self`.
+- A macro's input is checked when it parses as expressions separated by commas, as the input of `format!`, `println!` and `assert_eq!` does. Other macro input, such as `json!({ ... })` or `matches!` with a guard, is not checked.
+- `min_segments` sets the length that counts, and `allow` lists path prefixes that may be written in full, matched segment by segment: `allow = ["std::sync::atomic::Ordering"]`.
 
 ### `check`
 
@@ -94,6 +103,11 @@ enabled = true
 [version_number]
 enabled = true
 names = ["sherpa"]  # names that may sit between the word and the number; default none
+
+[qualified_call]
+enabled = true
+min_segments = 3  # the default
+allow = []        # path prefixes that may be written in full, as in "std::sync::atomic::Ordering"
 
 [error_text_match]
 enabled = true
@@ -143,7 +157,7 @@ When one is missing, `check` prints the command that installs it and exits with 
 It then runs, at the repository root:
 
 ```sh
-cargo dylint --git https://github.com/bwks/rusty-lints --rev v0.2.0 --pattern 'dylint/*' --all \
+cargo dylint --git https://github.com/bwks/rusty-lints --rev v0.2.1 --pattern 'dylint/*' --all \
   -- --workspace --all-targets --message-format=json
 ```
 

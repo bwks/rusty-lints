@@ -3,7 +3,7 @@ members = ["error_text_match", "single_use_closure"]
 resolver = "3"
 
 [workspace.package]
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/bwks/rusty-lints"
