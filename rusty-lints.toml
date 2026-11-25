@@ -1,10 +1,10 @@
 # The UI tests and fixtures break the rules on purpose.
 exclude = [
+    "cli/tests/fixtures",
     "dylint/*/ui",
     "dylint/*/ui_disabled",
     "dylint/*/ui_excluded",
-    "scan/tests/fixtures",
 ]
 
 [version_number]
-exclude = ["scan/src/rules/version_number.rs"]
+exclude = ["cli/src/scan/version_number.rs"]

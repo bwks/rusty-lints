@@ -1,14 +1,15 @@
-//! The `rusty-lints.toml` file at the root of the scanned repository. It has a table per rule;
-//! the tables of the Dylint rules are read here only to check them.
+//! The `rusty-lints.toml` file at the root of the checked repository. It has a table per rule.
+//! The scan reads it here; the Dylint lints read it from the `DYLINT_TOML` environment variable,
+//! which [`dylint_toml`] writes.
 
 use std::fs;
 use std::io::ErrorKind;
 use std::path::Path;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 
-use crate::rules::Rule;
+use crate::rule::{Rule, Tool};
 
 pub const FILE_NAME: &str = "rusty-lints.toml";
 
@@ -81,14 +82,7 @@ impl Default for VersionNumber {
 impl Config {
     /// Reads the config at `path`, or the defaults when there is no file there.
     pub fn load(path: &Path) -> Result<Self> {
-        let text = match fs::read_to_string(path) {
-            Ok(text) => text,
-            Err(error) if error.kind() == ErrorKind::NotFound => return Ok(Self::default()),
-            Err(error) => {
-                return Err(error).with_context(|| format!("reading {}", path.display()));
-            }
-        };
-        toml::from_str(&text).with_context(|| format!("parsing {}", path.display()))
+        toml::from_str(&read(path)?).with_context(|| format!("parsing {}", path.display()))
     }
 
     /// Whether `rule` is switched on.
@@ -98,6 +92,8 @@ impl Config {
             Rule::UseInFunction => self.use_in_function.enabled,
             Rule::CodeInModRs => self.code_in_mod_rs.enabled,
             Rule::VersionNumber => self.version_number.enabled,
+            Rule::ErrorTextMatch => self.error_text_match.enabled,
+            Rule::SingleUseClosure => self.single_use_closure.enabled,
         }
     }
 
@@ -108,12 +104,46 @@ impl Config {
             Rule::UseInFunction => &self.use_in_function.exclude,
             Rule::CodeInModRs => &self.code_in_mod_rs.exclude,
             Rule::VersionNumber => &self.version_number.exclude,
+            Rule::ErrorTextMatch => &self.error_text_match.exclude,
+            Rule::SingleUseClosure => &self.single_use_closure.exclude,
         };
         self.exclude
             .iter()
             .chain(rule_patterns)
             .any(|pattern| matches_prefix(pattern, path))
     }
+}
+
+/// The text of the config at `path`, empty when there is no file there.
+fn read(path: &Path) -> Result<String> {
+    match fs::read_to_string(path) {
+        Ok(text) => Ok(text),
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(String::new()),
+        Err(error) => Err(error).with_context(|| format!("reading {}", path.display())),
+    }
+}
+
+/// The config at `path` as the Dylint lints read it from `DYLINT_TOML`: the file, with each
+/// Dylint rule switched on when `rules` holds it and off otherwise.
+pub fn dylint_toml(path: &Path, rules: &[Rule]) -> Result<String> {
+    let mut table: toml::Table =
+        toml::from_str(&read(path)?).with_context(|| format!("parsing {}", path.display()))?;
+    for rule in Rule::ALL
+        .into_iter()
+        .filter(|rule| rule.tool() == Tool::Check)
+    {
+        let entry = table
+            .entry(rule.name())
+            .or_insert_with(|| toml::Value::Table(toml::Table::new()));
+        let toml::Value::Table(rule_table) = entry else {
+            bail!("{}: `{rule}` is not a table", path.display());
+        };
+        rule_table.insert(
+            "enabled".to_owned(),
+            toml::Value::Boolean(rules.contains(&rule)),
+        );
+    }
+    Ok(toml::to_string(&table)?)
 }
 
 /// Whether `pattern` names `path` or a folder holding it. The pattern is compared component by
@@ -132,8 +162,10 @@ pub fn matches_prefix(pattern: &str, path: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{Config, matches_prefix};
-    use crate::rules::Rule;
+    use std::fs;
+
+    use super::{Config, dylint_toml, matches_prefix};
+    use crate::rule::Rule;
 
     #[test]
     fn pattern_matches_whole_components_from_the_root() {
@@ -175,5 +207,26 @@ mod tests {
     #[test]
     fn unknown_key_is_refused() {
         assert!(toml::from_str::<Config>("[field_comment]\nenable = true\n").is_err());
+    }
+
+    #[test]
+    fn dylint_toml_switches_on_only_the_chosen_dylint_rules() {
+        let path = std::env::temp_dir().join(format!("rusty-lints-{}.toml", std::process::id()));
+        fs::write(
+            &path,
+            r#"
+            exclude = ["vendor"]
+            [single_use_closure]
+            exclude = ["gen"]
+            "#,
+        )
+        .unwrap();
+        let text = dylint_toml(&path, &[Rule::ErrorTextMatch, Rule::FieldComment]).unwrap();
+        fs::remove_file(&path).unwrap();
+        let config: Config = toml::from_str(&text).unwrap();
+        assert!(config.enabled(Rule::ErrorTextMatch));
+        assert!(!config.enabled(Rule::SingleUseClosure));
+        assert_eq!(config.single_use_closure.exclude, ["gen"]);
+        assert_eq!(config.exclude, ["vendor"]);
     }
 }

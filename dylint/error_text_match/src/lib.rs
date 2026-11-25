@@ -19,10 +19,11 @@ use clippy_utils::res::MaybeResPath;
 use clippy_utils::ty::implements_trait;
 use clippy_utils::visitors::for_each_expr;
 use clippy_utils::{find_binding_init, is_in_test, sym};
+use rustc_hir::def::{DefKind, Res};
 use rustc_hir::def_id::DefId;
 use rustc_hir::{BinOpKind, Expr, ExprKind, UnOp};
 use rustc_lint::{LateContext, LateLintPass, LintContext};
-use rustc_middle::ty::{self, Ty};
+use rustc_middle::ty::{self, Ty, TypeckResults};
 use rustc_span::Span;
 
 use config::Config;
@@ -44,6 +45,10 @@ const PASS_THROUGH: &[&str] = &[
     "trim",
     "trim_start",
     "trim_end",
+    "as_deref",
+    "unwrap",
+    "unwrap_or_default",
+    "expect",
 ];
 
 /// Methods that decide something from the text they are called on.
@@ -64,6 +69,9 @@ const TEXT_TESTS: &[&str] = &[
     "eq_ignore_ascii_case",
     "parse",
 ];
+
+/// Methods whose closure argument makes the result, as in `result.err().map(|e| e.to_string())`.
+const CLOSURE_MAPS: &[&str] = &["map", "and_then"];
 
 /// Text tests that also decide from their argument, as in `list.contains(&error.to_string())`.
 const ARGUMENT_TESTS: &[&str] = &["contains", "eq", "ne", "eq_ignore_ascii_case"];
@@ -125,8 +133,8 @@ impl<'tcx> LateLintPass<'tcx> for ErrorTextMatch {
                 let from_argument = ARGUMENT_TESTS.contains(&name)
                     && arguments
                         .iter()
-                        .any(|argument| self.is_error_text(cx, argument, 0));
-                if from_argument || self.is_error_text(cx, receiver, 0) {
+                        .any(|argument| self.is_error_text(cx, cx.typeck_results(), argument, 0));
+                if from_argument || self.is_error_text(cx, cx.typeck_results(), receiver, 0) {
                     report(cx, &self.config, expr, expr.span);
                 }
             }
@@ -134,12 +142,13 @@ impl<'tcx> LateLintPass<'tcx> for ErrorTextMatch {
                 if !expr.span.from_expansion()
                     && matches!(operator.node, BinOpKind::Eq | BinOpKind::Ne) =>
             {
-                if self.is_error_text(cx, left, 0) || self.is_error_text(cx, right, 0) {
+                if self.is_error_text(cx, cx.typeck_results(), left, 0)
+                    || self.is_error_text(cx, cx.typeck_results(), right, 0) {
                     report(cx, &self.config, expr, expr.span);
                 }
             }
             ExprKind::Match(scrutinee, ..) if !expr.span.from_expansion() => {
-                if self.is_error_text(cx, scrutinee, 0) {
+                if self.is_error_text(cx, cx.typeck_results(), scrutinee, 0) {
                     report(cx, &self.config, expr, scrutinee.span);
                 }
             }
@@ -157,7 +166,7 @@ impl<'tcx> LateLintPass<'tcx> for ErrorTextMatch {
                 let ExprKind::Tup(sides) = scrutinee.kind else {
                     return;
                 };
-                if sides.iter().any(|side| self.is_error_text(cx, side, 0)) {
+                if sides.iter().any(|side| self.is_error_text(cx, cx.typeck_results(), side, 0)) {
                     report(cx, &self.config, expr, call.span);
                 }
             }
@@ -167,10 +176,13 @@ impl<'tcx> LateLintPass<'tcx> for ErrorTextMatch {
 }
 
 impl ErrorTextMatch {
-    /// Whether `expr` holds text made from an error by `to_string()` or `format!`.
+    /// Whether `expr`, typed by `typeck`, holds text made from an error by `to_string()` or
+    /// `format!`. The text is followed through `let` bindings, methods that keep it, closures
+    /// that map it and the return value of a function of the same crate.
     fn is_error_text<'tcx>(
         &self,
         cx: &LateContext<'tcx>,
+        typeck: &'tcx TypeckResults<'tcx>,
         expr: &'tcx Expr<'tcx>,
         depth: u8,
     ) -> bool {
@@ -182,7 +194,7 @@ impl ErrorTextMatch {
             .any(|call| cx.tcx.is_diagnostic_item(sym::format_macro, call.def_id))
         {
             return for_each_expr(cx.tcx, expr, |part| {
-                if self.is_error_type(cx, cx.typeck_results().expr_ty(part)) {
+                if self.is_error_type(cx, typeck.expr_ty(part)) {
                     ControlFlow::Break(())
                 } else {
                     ControlFlow::Continue(())
@@ -195,16 +207,41 @@ impl ErrorTextMatch {
                 let name = segment.ident.name.as_str();
                 if name == "to_string"
                     && arguments.is_empty()
-                    && self.is_error_type(cx, cx.typeck_results().expr_ty(receiver))
+                    && self.is_error_type(cx, typeck.expr_ty(receiver))
                 {
                     return true;
                 }
-                PASS_THROUGH.contains(&name) && self.is_error_text(cx, receiver, depth + 1)
+                if let ([argument], true) = (arguments, CLOSURE_MAPS.contains(&name))
+                    && let ExprKind::Closure(closure) = argument.kind
+                {
+                    let body = cx.tcx.hir_body(closure.body);
+                    return self.is_error_text(cx, typeck, body.value, depth + 1);
+                }
+                PASS_THROUGH.contains(&name) && self.is_error_text(cx, typeck, receiver, depth + 1)
             }
+            ExprKind::Call(callee, _) => {
+                let ExprKind::Path(qpath) = &callee.kind else {
+                    return false;
+                };
+                let Res::Def(DefKind::Fn | DefKind::AssocFn, id) =
+                    typeck.qpath_res(qpath, callee.hir_id)
+                else {
+                    return false;
+                };
+                let Some(local) = id.as_local() else {
+                    return false;
+                };
+                cx.tcx.hir_maybe_body_owned_by(local).is_some_and(|body| {
+                    self.is_error_text(cx, cx.tcx.typeck(local), body.value, depth + 1)
+                })
+            }
+            ExprKind::Block(block, _) => block
+                .expr
+                .is_some_and(|tail| self.is_error_text(cx, typeck, tail, depth + 1)),
             ExprKind::Path(_) => expr
                 .res_local_id()
                 .and_then(|id| find_binding_init(cx, id))
-                .is_some_and(|init| self.is_error_text(cx, init, depth + 1)),
+                .is_some_and(|init| self.is_error_text(cx, typeck, init, depth + 1)),
             _ => false,
         }
     }

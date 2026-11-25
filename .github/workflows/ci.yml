@@ -3,7 +3,6 @@ name: CI
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   pull_request:
 
 env:
@@ -11,12 +10,13 @@ env:
   DYLINT_VERSION: 6.4.0
 
 jobs:
-  scan:
-    name: rusty-scan (stable)
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: scan
+  cli:
+    name: rusty-lints (stable, ${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
       - name: Install stable Rust
@@ -24,19 +24,15 @@ jobs:
           rustup toolchain install stable --profile minimal --component clippy,rustfmt
           rustup default stable
       - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: scan
       - name: Format
         run: cargo fmt --check
       - name: Clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --all-targets --locked -- -D warnings
       - name: Test
-        run: cargo test
-      - name: Check this repository
-        run: cargo run --release -- ..
+        run: cargo test --locked
 
   dylint:
-    name: Dylint lints (pinned nightly)
+    name: Dylint lints and rusty-lints all (pinned nightly)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -60,20 +56,13 @@ jobs:
         with:
           workspaces: |
             dylint
-            scan -> target/dylint
-      - name: Install the Dylint tools
-        run: |
-          if ! command -v cargo-dylint >/dev/null || ! command -v dylint-link >/dev/null; then
-            cargo +stable install --locked cargo-dylint dylint-link --version "$DYLINT_VERSION"
-          fi
-      - name: Install the pinned nightly
-        working-directory: dylint
-        run: rustup toolchain install
+            . -> target
+      - name: Install stable Rust
+        run: rustup toolchain install stable --profile minimal
+      - name: Build rusty-lints
+        run: cargo +stable build --release --locked
+      - name: rusty-lints all on this repository, with the lints in this checkout
+        run: target/release/rusty-lints all --path . --install
       - name: UI tests
         working-directory: dylint
         run: cargo test
-      - name: Lint rusty-scan with the Dylint lints
-        working-directory: scan
-        env:
-          DYLINT_RUSTFLAGS: -D warnings
-        run: DYLINT_TOML="$(cat ../rusty-lints.toml)" cargo dylint --path .. --pattern 'dylint/*' --all -- --all-targets

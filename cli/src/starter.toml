@@ -1,0 +1,34 @@
+# rusty-lints: https://github.com/bwks/rusty-lints
+# Every rule is on. Each table takes `enabled` and `exclude`; an unknown key is an error.
+
+# Path prefixes, relative to the repository root, that no rule checks. Matched whole component
+# by component; `*` matches any one component, as in "crates/*/tests/fixtures".
+exclude = []
+
+[field_comment]
+enabled = true
+exclude = []
+# Types with one of these derives may comment their fields: clap builds help from them.
+exempt_derives = ["Parser", "Subcommand", "Args", "ValueEnum"]
+
+[use_in_function]
+enabled = true
+exclude = []
+
+[code_in_mod_rs]
+enabled = true
+exclude = []
+
+[version_number]
+enabled = true
+exclude = []
+# Names that may stand between "since" and the number, as in "since MyApp 1.2.0".
+names = []
+
+[error_text_match]
+enabled = true
+exclude = []
+
+[single_use_closure]
+enabled = true
+exclude = []

@@ -1,0 +1,43 @@
+warning: test checks an error by its text
+  --> $DIR/helper.rs:27:5
+   |
+LL |     assert_eq!(message(), "out of space");
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: assert the error's type or variant, or downcast to it
+   = note: `#[warn(error_text_match)]` on by default
+
+warning: test checks an error by its text
+  --> $DIR/helper.rs:28:13
+   |
+LL |     assert!(message().contains("space"));
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: assert the error's type or variant, or downcast to it
+
+warning: test checks an error by its text
+  --> $DIR/helper.rs:29:5
+   |
+LL |     assert_eq!(maybe_message().as_deref(), Some("out of space"));
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: assert the error's type or variant, or downcast to it
+
+warning: test checks an error by its text
+  --> $DIR/helper.rs:30:13
+   |
+LL |     assert!(formatted().starts_with("out"));
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: assert the error's type or variant, or downcast to it
+
+warning: test checks an error by its text
+  --> $DIR/helper.rs:32:13
+   |
+LL |     assert!(text.ends_with("space"));
+   |             ^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: assert the error's type or variant, or downcast to it
+
+warning: 5 warnings emitted
+

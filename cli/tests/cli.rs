@@ -1,4 +1,4 @@
-//! Runs `rusty-scan` on the fixtures, each copied into a git repository of its own.
+//! Runs `rusty-lints` on the fixtures, each copied into a git repository of its own.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -14,7 +14,7 @@ impl Repository {
     /// A new git repository named after `test` that tracks `files`, each copied from the
     /// fixtures to the same path.
     fn new(test: &str, files: &[&str]) -> Self {
-        let root = std::env::temp_dir().join(format!("rusty-scan-{}-{test}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("rusty-lints-{}-{test}", std::process::id()));
         if root.exists() {
             fs::remove_dir_all(&root).unwrap();
         }
@@ -34,9 +34,15 @@ impl Repository {
         fs::write(self.root.join("rusty-lints.toml"), text).unwrap();
     }
 
-    /// Runs `rusty-scan` on the repository with `args`.
+    /// Runs `rusty-lints scan` on the repository with `args`.
     fn scan(&self, args: &[&str]) -> Output {
-        Command::new(env!("CARGO_BIN_EXE_rusty-scan"))
+        self.run(&[&["scan"], args].concat())
+    }
+
+    /// Runs `rusty-lints` on the repository with `args`.
+    fn run(&self, args: &[&str]) -> Output {
+        Command::new(env!("CARGO_BIN_EXE_rusty-lints"))
+            .arg("-C")
             .arg(&self.root)
             .args(args)
             .output()
@@ -193,4 +199,45 @@ fn unknown_config_key_fails_the_scan() {
     repository.config("[use_in_function]\nenable = false\n");
     let output = repository.scan(&[]);
     assert_eq!(output.status.code(), Some(2));
+}
+
+#[test]
+fn json_format_holds_every_hit() {
+    let repository = Repository::new("json", &["use_in_function.rs"]);
+    let output = repository.scan(&["--rule", "use_in_function", "--format", "json"]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.starts_with(r#"{"hits":[{"file":"use_in_function.rs","line":18,"#));
+    assert_eq!(stdout.matches(r#""rule":"use_in_function""#).count(), 5);
+    assert_eq!(output.status.code(), Some(1));
+}
+
+#[test]
+fn scan_refuses_a_rule_that_check_runs() {
+    let repository = Repository::new("wrong-command", &["use_in_function.rs"]);
+    let output = repository.scan(&["--rule", "error_text_match"]);
+    assert_eq!(output.status.code(), Some(2));
+}
+
+#[test]
+fn all_with_only_scan_rules_runs_no_check() {
+    let repository = Repository::new("all", &["use_in_function.rs"]);
+    let output = repository.run(&["all", "--rule", "use_in_function"]);
+    assert_eq!(places(&output).len(), 5);
+    assert_eq!(output.status.code(), Some(1));
+}
+
+#[test]
+fn init_writes_a_config_once() {
+    let repository = Repository::new("init", &["use_in_function.rs"]);
+    let first = repository.run(&["init"]);
+    assert_eq!(first.status.code(), Some(0));
+    let written = fs::read_to_string(repository.root.join("rusty-lints.toml")).unwrap();
+    assert!(written.contains("[error_text_match]"));
+    fs::write(repository.root.join("rusty-lints.toml"), "# mine\n").unwrap();
+    let second = repository.run(&["init"]);
+    assert_eq!(second.status.code(), Some(2));
+    assert_eq!(
+        fs::read_to_string(repository.root.join("rusty-lints.toml")).unwrap(),
+        "# mine\n"
+    );
 }
